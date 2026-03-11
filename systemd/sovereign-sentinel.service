@@ -1,0 +1,11 @@
+[Unit]
+Description=Software Sovereign Sentinel (Background Policy Auditor)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/julia --project=/var/mnt/eclipse/repos/julia-ecosystem/packages/SoftwareSovereign.jl -e 'using SoftwareSovereign; while true; audit_system(my_policy); sleep(3600); end'
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target

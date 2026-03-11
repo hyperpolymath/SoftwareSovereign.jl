@@ -1,0 +1,24 @@
+name = "SoftwareSovereign"
+uuid = "cc72cefe-1ea1-4255-93cd-1af1078aa475"
+authors = ["Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"]
+version = "0.1.0"
+license = "MPL-2.0"
+
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+LMDB = "11f193de-5e89-5f17-923a-7d207d56daf9"
+
+[compat]
+julia = "1.10"
+DataFrames = "1"
+JSON3 = "1"
+EzXML = "1"
+LMDB = "0.2"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

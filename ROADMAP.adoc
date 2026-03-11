@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= SoftwareSovereign.jl Roadmap
+
+== v0.1.0 - The Policy Core (Current)
+* [x] Renamed from LicensePicker to reflect wider scope.
+* [x] `SoftwarePolicy` data structure.
+* [x] Multi-manager backend abstraction (`DNF`, `Flatpak`, `ASDF`).
+
+== v0.2.0 - Universal Drivers
+* [ ] **Flatpak Driver**: Full AppStream XML parsing and permission auditing.
+* [ ] **DNF/Apt Driver**: Parsing local repo databases for license and origin info.
+* [ ] **ASDF Driver**: Auditing tool-versions against vulnerability databases.
+* [ ] **Telemetry Scanner**: A database of known 'phone-home' domains mapped to binary strings in packages.
+
+== v0.3.0 - Desktop Enforcement
+* [ ] **GNOME Sentinel**: A background service that notifies you when a newly installed app violates your Sovereignty Policy.
+* [ ] **Sovereign Dashboard**: A GTK or web-based UI to toggle policies and view violations.
+
+== Future Horizons (v1.0+)
+* [ ] **Axiomatic Policy Proofs**: Link with `Axiom.jl` to formally prove that a specific policy *cannot* be bypassed by a specific package manager configuration.
+* [ ] **Blockchain Provenance**: Verify package signatures against an immutable ledger of trusted build artifacts.

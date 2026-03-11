@@ -1,0 +1,7 @@
+{
+  "name": "Hyperpolymath Software Sovereign",
+  "description": "Integrated search for license-aware software discovery.",
+  "uuid": "sovereign@hyperpolymath.io",
+  "shell-version": ["45", "46", "47"],
+  "url": "https://github.com/hyperpolymath/SoftwareSovereign.jl"
+}

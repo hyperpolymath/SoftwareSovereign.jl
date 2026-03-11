@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= SoftwareSovereign.jl
+:toc: macro
+
+image:https://img.shields.io/badge/Project-Topology-9558B2[Topology,link="TOPOLOGY.md"]
+image:https://img.shields.io/badge/Completion-50%25-yellow[50%,link="TOPOLOGY.md"]
+image:https://img.shields.io/badge/License-PMPL--1.0-blue.svg[License: PMPL-1.0]
+
+*Universal Policy Engine for Total System Control.*
+
+SoftwareSovereign.jl is a meta-package manager that sits on top of `dnf`, `apt`, `flatpak`, and `asdf`. It allows you to define and enforce high-level software policies across your entire computing environment.
+
+== The Vision: Policy-Based Management
+
+Stop thinking about individual packages. Start thinking about **Policies**:
+*   "No proprietary binaries from companies with known privacy violations."
+*   "Only software with OSI-approved licenses."
+*   "Block any package that requests broad filesystem permissions by default."
+
+== Usage
+
+[source,julia]
+----
+using SoftwareSovereign
+
+# Define your personal sovereignty policy
+my_policy = SoftwarePolicy(
+    name = "Libre-Modern-Only",
+    allowed_licenses = ["GPL-3.0", "MIT", "Apache-2.0"],
+    disallowed_orgs = ["google", "microsoft", "meta"],
+    excluded_archs = ["i386", "i686", "noarch"], # Cleanup DNF listings
+    require_open_source = true,
+    block_telemetry = true
+)
+
+# Audit your entire machine
+violations = audit_system(my_policy)
+
+# Enforce the rules
+enforce_policy(my_policy)
+----
