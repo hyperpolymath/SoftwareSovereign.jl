@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Clade declaration — part of the gv-clade-index registry
+# See: https://github.com/hyperpolymath/gv-clade-index
+
+[identity]
+uuid = "cb6ca3cd-3823-5981-a236-ae86f9be9d0d"
+primary-forge = "github"
+primary-owner = "hyperpolymath"
+canonical-name = "SoftwareSovereign.jl"
+prefixed-name = "gv-SoftwareSovereign.jl"
+
+[clade]
+primary = "gv"
+secondary = []
+assigned = "2026-03-16"
+rationale = ""
+
+[forges]
+github = "hyperpolymath/SoftwareSovereign.jl"
+gitlab = "hyperpolymath/SoftwareSovereign.jl"
+bitbucket = "hyperpolymath/SoftwareSovereign.jl"
+
+[lineage]
+type = "standalone"
+parent = "Julia package — software sovereignty analysis"
+born = "2026-03-16"
