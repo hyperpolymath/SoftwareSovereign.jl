@@ -12,7 +12,7 @@ class SovereignSearchProvider {
     getInitialResultSet(terms, callback, cancellable) {
         let query = terms.join(' ');
         let [success, stdout, stderr] = GLib.spawn_command_line_sync(
-            `julia --project=/var/mnt/eclipse/repos/julia-ecosystem/packages/SoftwareSovereign.jl /var/mnt/eclipse/repos/julia-ecosystem/packages/SoftwareSovereign.jl/scripts/gnome-search-bridge.jl "${query}"`
+            `julia --project=/var$REPOS_DIR/julia-ecosystem/packages/SoftwareSovereign.jl /var$REPOS_DIR/julia-ecosystem/packages/SoftwareSovereign.jl/scripts/gnome-search-bridge.jl "${query}"`
         );
 
         if (success) {
