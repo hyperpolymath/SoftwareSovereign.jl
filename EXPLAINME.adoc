@@ -1,34 +1,154 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
 = SoftwareSovereign.jl — Show Me The Receipts
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toc:
 :icons: font
 
-The README makes claims. This file backs them up.
+The README makes claims. This file backs them up with file paths, honest caveats,
+and a description of what each submodule actually provides today.
 
 [quote, README]
 ____
-SoftwareSovereign.jl is a meta-package manager that sits on top of `dnf`, `apt`, `flatpak`, and `asdf`. It allows you to define and enforce high-level software policies across your entire computing environment.
+SoftwareSovereign.jl is a meta-package manager that sits on top of `dnf`, `apt`,
+`flatpak`, and `asdf`. It allows you to define and enforce high-level software
+policies across your entire computing environment. Stop thinking about individual
+packages. Start thinking about Policies: "No proprietary binaries from companies
+with known privacy violations." "Only software with OSI-approved licenses."
+"Block any package that requests broad filesystem permissions by default."
 ____
 
-== Technology Choices
+== What It Actually Does Today
+
+=== Claim: Policy-based system audit across package managers
+
+*Interface complete; audit logic stubbed.* The `SoftwarePolicy` struct accepts
+`name`, `allowed_licenses`, `disallowed_orgs`, `excluded_archs`, `require_open_source`,
+and `block_telemetry` fields. `audit_system(policy::SoftwarePolicy)` returns
+`Vector{PolicyViolation}` — currently always empty; the DNF/Flatpak/ASDF scanning
+logic is a declared stub. `PolicyViolation` is a complete struct carrying
+`app_id::String`, `manager::Symbol`, and `reason::String`.
+
+The test suite handles this honestly by conditionally loading the full module
+(DataFrames + JSON3 + LMDB dependencies may not be available) and using
+standalone struct mirrors to test the type shapes independently.
+
+=== Claim: License classification with sovereignty-aware groupings
+
+*Fully implemented.* `src/license_db.jl` contains the `LicenseDB` submodule with
+`LicenseCategory` struct and `LICENSE_GROUPS` constant — a five-category taxonomy:
+
+- **Strong Copyleft**: GPL-3.0, AGPL-3.0, GPL-2.0 (requires source sharing)
+- **Weak Copyleft**: LGPL-2.1, LGPL-3.0, MPL-2.0
+- **Permissive**: MIT, Apache-2.0, BSD-3-Clause, ISC, and others
+- **Public Domain / Unlicense**: CC0-1.0, Unlicense, WTFPL
+- **Proprietary**: Single-entry catch-all
+
+The test suite verifies category names, description content, SPDX identifiers
+within each group, that no license appears in multiple groups, and that all
+category names are unique.
+
+=== Claim: Application redundancy detection
+
+*Type-complete; logic stubbed.* `src/redundancy.jl` defines `RedundancyReport`
+with `category::Symbol`, `apps::Vector{String}`, and `count::Int`. The `check_redundancy`
+function compares installed applications across category buckets (`:Editor`,
+`:Browser`, `:Calculator`, etc.) and returns reports for categories with more
+than one installed application. The actual package manager query is a stub;
+the data model and reporting types are complete.
+
+*Honest caveat:* The full module depends on `DataFrames`, `JSON3`, and `LMDB`
+(for the cache layer). If those packages are not installed, module loading fails
+and the integration test suite auto-skips. All three submodules (`LicenseDB`,
+`SovereignCache`, `Redundancy`) can be tested in isolation by including their
+files directly.
+
+== How It Works
+
+The module load sequence in `src/SoftwareSovereign.jl`:
+
+. Includes and `using`s `LicenseDB` (`src/license_db.jl`) — pure data, no
+  external dependencies.
+. Includes and `using`s `SovereignCache` (`src/cache.jl`) — LMDB-backed
+  app metadata cache.
+. Includes and `using`s `Redundancy` (`src/redundancy.jl`) — category overlap
+  detection.
+. Includes and `using`s `SovereignTUI` (`src/tui.jl`) — terminal dashboard.
+. Exports `SoftwarePolicy`, `PolicyViolation`, `audit_system`, `enforce_policy`,
+  `launch_dashboard`, `show_license_picker`, `LicenseCategory`, `LICENSE_GROUPS`,
+  `init_cache`, `cache_app`, `check_redundancy`, `RedundancyReport`.
+
+The policy enforcement path (when fully implemented) will:
+. Run `audit_system(policy)` to collect `PolicyViolation` objects.
+. For each violation, decide remove/replace/exempt based on policy configuration.
+. Invoke `ShellIntegration.exec_safe` for each package manager command.
+
+== Dogfooded Across The Account
 
 [cols="1,2"]
 |===
-| Technology | Learn More
+| Project | Connection
 
-| **Julia** | https://julialang.org
+| `ShellIntegration.jl`
+| `enforce_policy` is designed to route all package-manager commands through
+  `ShellIntegration.exec_safe` to prevent accidental destructive operations
+  during policy enforcement.
+
+| `hypatia` CI scan
+| Hypatia's RSR antipattern rules check that SoftwareSovereign's policy files
+  comply with the PMPL-1.0-or-later licensing policy it enforces itself.
+
+| `palimpsest-license`
+| SoftwareSovereign's `LicenseDB` includes PMPL-1.0-or-later as a licenseable
+  category; it was one of the first packages updated when the Palimpsest License
+  was formalised.
+
+| `developer-ecosystem/julia-ecosystem/`
+| Catalogued as the software-governance layer in the Julia ecosystem index.
+
+| `ambientops` (personal-sysadmin)
+| SoftwareSovereign is the intended policy engine for the personal-sysadmin
+  component of ambientops, replacing ad-hoc dnf/flatpak scripts.
 |===
 
 == File Map
 
-[cols="1,2"]
+[cols="1,3"]
 |===
 | Path | What's There
 
-| `src/` | Source code
-| `test(s)/` | Test suite
+| `src/SoftwareSovereign.jl`
+| Top-level module (~75 lines): submodule includes, `SoftwarePolicy` and
+  `PolicyViolation` struct definitions, stub `audit_system` and `enforce_policy`.
+
+| `src/license_db.jl`
+| `LicenseDB` submodule: `LicenseCategory` struct, `LICENSE_GROUPS` constant
+  with five sovereignty-oriented categories and their SPDX identifiers.
+
+| `src/cache.jl`
+| `SovereignCache` submodule: LMDB-backed cache for installed application metadata
+  (`init_cache`, `cache_app`).
+
+| `src/redundancy.jl`
+| `Redundancy` submodule: `RedundancyReport` struct, `check_redundancy` function
+  for detecting overlapping applications by category.
+
+| `src/tui.jl`
+| `SovereignTUI` submodule: terminal dashboard (`launch_dashboard`,
+  `show_license_picker`) for interactive policy inspection.
+
+| `test/runtests.jl`
+| ~240 lines: `LicenseDB` standalone tests (category construction, `LICENSE_GROUPS`
+  content, no duplicate SPDX identifiers); standalone struct mirror tests for
+  `SoftwarePolicy` and `PolicyViolation`; `RedundancyReport` type tests;
+  conditional full-module integration tests (auto-skip if deps unavailable).
+  Chains to `e2e_test.jl` and `property_test.jl`.
+
+| `Project.toml`
+| Package identity (uuid `cc72cefe...`), `DataFrames`, `JSON3`, `EzXML`, `LMDB`
+  runtime dependencies, Julia ≥ 1.10.
 |===
 
 == Questions?
 
-Open an issue or reach out directly — happy to explain anything in more detail.
+Open an issue or reach out — happy to explain the license taxonomy design or
+the planned package manager integration strategy.
