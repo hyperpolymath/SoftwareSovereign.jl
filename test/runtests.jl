@@ -306,4 +306,9 @@ using Test
             @test_skip "Module loading failed - skipping integration tests"
         end
     end
+
+    # CRG Grade C tests
+    include("e2e_test.jl")
+    include("property_test.jl")
+
 end
