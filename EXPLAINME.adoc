@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 = SoftwareSovereign.jl — Show Me The Receipts
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toc:
@@ -95,10 +95,10 @@ The policy enforcement path (when fully implemented) will:
 
 | `hypatia` CI scan
 | Hypatia's RSR antipattern rules check that SoftwareSovereign's policy files
-  comply with the PMPL-1.0-or-later licensing policy it enforces itself.
+  comply with the MPL-2.0 licensing policy it enforces itself.
 
 | `palimpsest-license`
-| SoftwareSovereign's `LicenseDB` includes PMPL-1.0-or-later as a licenseable
+| SoftwareSovereign's `LicenseDB` includes MPL-2.0 as a licenseable
   category; it was one of the first packages updated when the Palimpsest License
   was formalised.
 
