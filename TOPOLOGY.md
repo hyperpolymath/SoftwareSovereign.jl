@@ -19,7 +19,7 @@ Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
                         │  └─────▲──────┘      └─────▲──────┘     │
                         │        │                   │            │
                         │  ┌─────┴──────┐      ┌─────┴──────┐     │
-                        │  │    ASDF    │      │  Nix/Guix  │     │
+                        │  │    ASDF    │      │  Guix/Guix  │     │
                         │  │ (Versioned)│      │ (Declara.) │     │
                         │  └─────▲──────┘      └─────▲──────┘     │
                         │        │                   │            │
