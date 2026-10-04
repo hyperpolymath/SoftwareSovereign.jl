@@ -3,19 +3,60 @@
 
 using Test
 
-# SoftwareSovereign depends on DataFrames, JSON3, and LMDB at module load time.
-# The cache module (LMDB) and redundancy module (references AppMetadata which is
-# not defined) make full module loading fragile. We test the submodules that can
-# be loaded independently, and test the main module types/functions if loading
-# succeeds.
+# The package under test. `Pkg.test` resolves every dependency declared in
+# Project.toml, so a module that fails to load is a real defect and must fail
+# the suite — it is deliberately not caught and skipped any more. (An undefined
+# `AppMetadata` in src/redundancy.jl used to abort precompilation, which Julia
+# 1.10 only reported as a warning while the module-loading tests silently
+# skipped; the integration tests below are now unconditionally required.)
+import SoftwareSovereign
+
+# `using SoftwareSovereign` must expose the documented public API to users.
+# Referencing each name here turns a missing definition or a missing `export`
+# into a hard error while the tests are being collected.
+module APICheck
+    using SoftwareSovereign
+
+    const API = (
+        SoftwarePolicy,
+        PolicyViolation,
+        AppMetadata,
+        audit_system,
+        enforce_policy,
+        scan_catalog,
+        LicenseCategory,
+        LICENSE_GROUPS,
+        init_cache,
+        cache_app,
+        get_cached_app,
+        check_redundancy,
+        RedundancyReport,
+        launch_dashboard,
+        show_license_picker,
+    )
+end
 
 @testset "SoftwareSovereign.jl" begin
 
+    @testset "Public API" begin
+        # Every public name must be exported ...
+        @test length(APICheck.API) == 15
+
+        # ... and be defined in the package itself.
+        @test APICheck.SoftwarePolicy === SoftwareSovereign.SoftwarePolicy
+        @test APICheck.AppMetadata === SoftwareSovereign.AppMetadata
+        @test APICheck.check_redundancy === SoftwareSovereign.check_redundancy
+        @test APICheck.RedundancyReport === SoftwareSovereign.RedundancyReport
+        @test APICheck.LICENSE_GROUPS === SoftwareSovereign.LICENSE_GROUPS
+    end
+
     # ========================================================================
     # LicenseDB submodule tests (no external dependencies beyond Base)
+    #
+    # These include src/license_db.jl directly so the pure-data taxonomy can be
+    # exercised on its own, independently of the package load.
     # ========================================================================
     @testset "LicenseDB" begin
-        # Include and use the submodule directly to avoid LMDB dependency
         include(joinpath(@__DIR__, "..", "src", "license_db.jl"))
         using .LicenseDB
 
@@ -100,14 +141,161 @@ using Test
     end
 
     # ========================================================================
-    # Core types and functions (attempt to load full module)
+    # Full module integration tests
+    #
+    # These run against the loaded package (dependencies are always present
+    # under `Pkg.test`).
+    # ========================================================================
+    @testset "Full Module Integration" begin
+        @testset "AppMetadata construction" begin
+            app = SoftwareSovereign.AppMetadata(
+                "org.gnome.Calculator", "GNOME Calculator", :flatpak,
+                "GPL-3.0", "x86_64", false
+            )
+            @test app.id == "org.gnome.Calculator"
+            @test app.name == "GNOME Calculator"
+            @test app.manager == :flatpak
+            @test app.license == "GPL-3.0"
+            @test app.arch == "x86_64"
+            @test app.telemetry == false
+        end
+
+        @testset "SoftwarePolicy construction" begin
+            policy = SoftwareSovereign.SoftwarePolicy(
+                "Test Policy",
+                ["MIT", "Apache-2.0"],
+                ["BadOrg"],
+                ["mips"],
+                true,
+                false
+            )
+            @test policy.name == "Test Policy"
+            @test length(policy.allowed_licenses) == 2
+            @test policy.require_open_source == true
+            @test policy.block_telemetry == false
+        end
+
+        @testset "PolicyViolation construction" begin
+            v = SoftwareSovereign.PolicyViolation("com.test.app", :dnf, "License not allowed")
+            @test v.app_id == "com.test.app"
+            @test v.manager == :dnf
+            @test v.reason == "License not allowed"
+        end
+
+        @testset "audit_system returns violations vector" begin
+            policy = SoftwareSovereign.SoftwarePolicy(
+                "Audit Test",
+                ["MIT"],
+                String[],
+                String[],
+                true,
+                true
+            )
+            violations = SoftwareSovereign.audit_system(policy)
+            @test violations isa Vector{SoftwareSovereign.PolicyViolation}
+            # Current implementation returns empty vector (stub)
+            @test isempty(violations)
+        end
+
+        @testset "scan_catalog returns AppMetadata entries" begin
+            catalog = SoftwareSovereign.scan_catalog()
+            @test catalog isa Vector{SoftwareSovereign.AppMetadata}
+            @test !isempty(catalog)
+            @test all(a -> a.manager isa Symbol, catalog)
+        end
+
+        @testset "check_redundancy detects overlapping categories" begin
+            apps = [
+                SoftwareSovereign.AppMetadata("org.gnome.Calculator", "GNOME Calculator", :flatpak, "GPL-3.0", "x86_64", false),
+                SoftwareSovereign.AppMetadata("kcalc", "KCalc", :dnf, "GPL-2.0", "x86_64", false),
+                SoftwareSovereign.AppMetadata("vscode", "Visual Studio Code", :flatpak, "Proprietary", "x86_64", true),
+                SoftwareSovereign.AppMetadata("org.gnome.TextEditor", "GNOME Text Editor", :flatpak, "GPL-3.0", "x86_64", false),
+                SoftwareSovereign.AppMetadata("gedit", "gedit", :dnf, "GPL-2.0", "x86_64", false),
+            ]
+            reports = SoftwareSovereign.check_redundancy(apps)
+            @test reports isa Vector{SoftwareSovereign.RedundancyReport}
+
+            by_category = Dict(r.category => r for r in reports)
+            @test length(reports) == 2
+            @test by_category[:Calculator].count == 2
+            @test Set(by_category[:Calculator].apps) == Set(["org.gnome.Calculator", "kcalc"])
+            @test by_category[:Editor].count == 2
+            @test Set(by_category[:Editor].apps) == Set(["vscode", "org.gnome.TextEditor"])
+            @test !haskey(by_category, :Generic) # gedit is alone — not redundant
+        end
+
+        @testset "check_redundancy: a single app is not redundant" begin
+            apps = [SoftwareSovereign.AppMetadata("gedit", "gedit", :dnf, "GPL-2.0", "x86_64", false)]
+            @test isempty(SoftwareSovereign.check_redundancy(apps))
+        end
+
+        @testset "enforce_policy runs without error" begin
+            policy = SoftwareSovereign.SoftwarePolicy(
+                "Enforce Test",
+                ["MIT"],
+                String[],
+                String[],
+                false,
+                false
+            )
+            # Should not throw
+            @test (SoftwareSovereign.enforce_policy(policy); true)
+        end
+
+        @testset "LicenseCategory and LICENSE_GROUPS exported" begin
+            @test SoftwareSovereign.LicenseCategory isa DataType
+            @test SoftwareSovereign.LICENSE_GROUPS isa Vector{SoftwareSovereign.LicenseCategory}
+            @test length(SoftwareSovereign.LICENSE_GROUPS) == 5
+        end
+
+        @testset "RedundancyReport exported" begin
+            @test SoftwareSovereign.RedundancyReport isa DataType
+            report = SoftwareSovereign.RedundancyReport(:Browser, ["firefox", "chromium"], 2)
+            @test report.category == :Browser
+            @test report.count == 2
+        end
+
+        @testset "SovereignCache round-trip" begin
+            mktempdir() do dir
+                cache = SoftwareSovereign.init_cache(joinpath(dir, "cache.lmdb"))
+                app_id = "org.gnome.Calculator"
+
+                @test SoftwareSovereign.get_cached_app(cache, app_id) === nothing
+
+                SoftwareSovereign.cache_app(
+                    cache, app_id,
+                    Dict("license" => "GPL-3.0", "manager" => "flatpak")
+                )
+
+                @test haskey(cache, app_id)
+                cached = SoftwareSovereign.get_cached_app(cache, app_id)
+                @test cached !== nothing
+                @test cached["license"] == "GPL-3.0"
+                @test cached["manager"] == "flatpak"
+            end
+        end
+
+        @testset "dashboard and license picker run without error" begin
+            policy = SoftwareSovereign.SoftwarePolicy(
+                "Dashboard Test",
+                ["MIT"],
+                String[],
+                String[],
+                false,
+                false
+            )
+            @test (SoftwareSovereign.launch_dashboard(policy); true)
+            @test (SoftwareSovereign.show_license_picker(); true)
+        end
+    end
+
+    # ========================================================================
+    # Standalone struct-shape tests
+    #
+    # These mirror the public structs locally, so the expected field layout is
+    # pinned even if the module ever fails to load for an unrelated reason.
     # ========================================================================
     @testset "Core Types (standalone)" begin
-        # Define the structs inline to test independently of module loading
-        # (since the module depends on DataFrames, JSON3, LMDB which may not
-        # be available in the test environment)
-
-        # SoftwarePolicy struct
         @testset "SoftwarePolicy-like construction" begin
             # Test the struct shape by mimicking it
             struct TestPolicy
@@ -223,87 +411,6 @@ using Test
         for cat in categories
             report = TestRedundancyReport2(cat, ["app1", "app2"], 2)
             @test report.category == cat
-        end
-    end
-
-    # ========================================================================
-    # Full module integration tests (only run if dependencies are available)
-    # ========================================================================
-    @testset "Full Module Integration" begin
-        module_loaded = false
-        try
-            @eval using SoftwareSovereign
-            module_loaded = true
-        catch e
-            @warn "SoftwareSovereign module could not be loaded (missing dependencies). " *
-                  "Skipping integration tests." exception=e
-        end
-
-        if module_loaded
-            @testset "SoftwarePolicy construction" begin
-                policy = SoftwarePolicy(
-                    "Test Policy",
-                    ["MIT", "Apache-2.0"],
-                    ["BadOrg"],
-                    ["mips"],
-                    true,
-                    false
-                )
-                @test policy.name == "Test Policy"
-                @test length(policy.allowed_licenses) == 2
-                @test policy.require_open_source == true
-                @test policy.block_telemetry == false
-            end
-
-            @testset "PolicyViolation construction" begin
-                v = PolicyViolation("com.test.app", :dnf, "License not allowed")
-                @test v.app_id == "com.test.app"
-                @test v.manager == :dnf
-                @test v.reason == "License not allowed"
-            end
-
-            @testset "audit_system returns violations vector" begin
-                policy = SoftwarePolicy(
-                    "Audit Test",
-                    ["MIT"],
-                    String[],
-                    String[],
-                    true,
-                    true
-                )
-                violations = audit_system(policy)
-                @test violations isa Vector{PolicyViolation}
-                # Current implementation returns empty vector (stub)
-                @test isempty(violations)
-            end
-
-            @testset "enforce_policy runs without error" begin
-                policy = SoftwarePolicy(
-                    "Enforce Test",
-                    ["MIT"],
-                    String[],
-                    String[],
-                    false,
-                    false
-                )
-                # Should not throw
-                @test (enforce_policy(policy); true)
-            end
-
-            @testset "LicenseCategory and LICENSE_GROUPS exported" begin
-                @test LicenseCategory isa DataType
-                @test LICENSE_GROUPS isa Vector{LicenseCategory}
-                @test length(LICENSE_GROUPS) == 5
-            end
-
-            @testset "RedundancyReport exported" begin
-                @test RedundancyReport isa DataType
-                report = RedundancyReport(:Browser, ["firefox", "chromium"], 2)
-                @test report.category == :Browser
-                @test report.count == 2
-            end
-        else
-            @test_skip "Module loading failed - skipping integration tests"
         end
     end
 

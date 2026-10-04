@@ -2,7 +2,10 @@
 # (MPL-2.0 preferred; MPL-2.0 required for Julia ecosystem)
 module Redundancy
 
-using ..SoftwareSovereign
+# `AppMetadata` is defined in the parent module *before* this file is included,
+# so an explicit import resolves while the module loads (see the note in
+# src/SoftwareSovereign.jl on definition order).
+using ..SoftwareSovereign: AppMetadata
 
 export check_redundancy, RedundancyReport
 
@@ -13,8 +16,10 @@ struct RedundancyReport
 end
 
 """
-    check_redundancy(installed_apps)
+    check_redundancy(installed)
+
 Identifies 'Bloat' by finding multiple apps in the same functional category.
+Returns one `RedundancyReport` per category that has more than one app.
 """
 function check_redundancy(installed::Vector{AppMetadata})
     # Group by category
@@ -25,7 +30,7 @@ function check_redundancy(installed::Vector{AppMetadata})
         if !haskey(cats, cat) cats[cat] = String[] end
         push!(cats[cat], a.id)
     end
-    
+
     reports = RedundancyReport[]
     for (cat, ids) in cats
         if length(ids) > 1

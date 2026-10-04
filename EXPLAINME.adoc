@@ -29,9 +29,13 @@ and `block_telemetry` fields. `audit_system(policy::SoftwarePolicy)` returns
 logic is a declared stub. `PolicyViolation` is a complete struct carrying
 `app_id::String`, `manager::Symbol`, and `reason::String`.
 
-The test suite handles this honestly by conditionally loading the full module
-(DataFrames + JSON3 + LMDB dependencies may not be available) and using
-standalone struct mirrors to test the type shapes independently.
+The test suite loads the full module unconditionally: every runtime dependency
+is declared in `Project.toml`, so `Pkg.test` always has them, and a module that
+fails to load is a hard test failure rather than a skip. (The suite used to
+catch the load error and skip the integration tests, which is why an undefined
+`AppMetadata` in `src/redundancy.jl` broke precompilation on Julia 1.11 while
+the Julia 1.10 job still reported green.) Standalone struct mirrors remain as
+extra checks on the field shapes of the public types.
 
 === Claim: License classification with sovereignty-aware groupings
 
@@ -52,31 +56,45 @@ category names are unique.
 
 *Type-complete; logic stubbed.* `src/redundancy.jl` defines `RedundancyReport`
 with `category::Symbol`, `apps::Vector{String}`, and `count::Int`. The `check_redundancy`
-function compares installed applications across category buckets (`:Editor`,
-`:Browser`, `:Calculator`, etc.) and returns reports for categories with more
-than one installed application. The actual package manager query is a stub;
-the data model and reporting types are complete.
+function takes a `Vector{AppMetadata}` (the core type defined in
+`src/SoftwareSovereign.jl`), compares installed applications across category
+buckets (`:Editor`, `:Browser`, `:Calculator`, etc.) and returns reports for
+categories with more than one installed application. The catalogue it reads is
+still a stub: `scan_catalog()` returns the built-in `DEMO_CATALOG` instead of
+querying `dnf`/`flatpak`/`asdf`, so the data model and reporting types are
+complete while the package-manager query is pending (ROADMAP v0.2.0).
 
-*Honest caveat:* The full module depends on `DataFrames`, `JSON3`, and `LMDB`
-(for the cache layer). If those packages are not installed, module loading fails
-and the integration test suite auto-skips. All three submodules (`LicenseDB`,
-`SovereignCache`, `Redundancy`) can be tested in isolation by including their
-files directly.
+*Honest caveat:* the full module depends on `DataFrames`, `JSON3`, and `LMDB`
+(for the cache layer); those are declared dependencies, so `Pkg.test` always
+has them and the integration tests always run. All three submodules
+(`LicenseDB`, `SovereignCache`, `Redundancy`) can also be tested in isolation by
+including their files directly.
 
 == How It Works
 
-The module load sequence in `src/SoftwareSovereign.jl`:
+The module load sequence in `src/SoftwareSovereign.jl` — the order is
+load-bearing, see below:
 
+. Defines and exports the core types (`AppMetadata`, `SoftwarePolicy`,
+  `PolicyViolation`) and the catalogue/policy entry points (`DEMO_CATALOG`,
+  `scan_catalog`, `audit_system`, `enforce_policy`).
 . Includes and `using`s `LicenseDB` (`src/license_db.jl`) — pure data, no
   external dependencies.
 . Includes and `using`s `SovereignCache` (`src/cache.jl`) — LMDB-backed
-  app metadata cache.
+  app metadata cache (`init_cache`, `cache_app`, `get_cached_app`).
 . Includes and `using`s `Redundancy` (`src/redundancy.jl`) — category overlap
   detection.
 . Includes and `using`s `SovereignTUI` (`src/tui.jl`) — terminal dashboard.
-. Exports `SoftwarePolicy`, `PolicyViolation`, `audit_system`, `enforce_policy`,
-  `launch_dashboard`, `show_license_picker`, `LicenseCategory`, `LICENSE_GROUPS`,
-  `init_cache`, `cache_app`, `check_redundancy`, `RedundancyReport`.
+. Re-exports `LicenseCategory`, `LICENSE_GROUPS`, `init_cache`, `cache_app`,
+  `get_cached_app`, `check_redundancy`, `RedundancyReport`, `launch_dashboard`
+  and `show_license_picker` alongside the core names exported in step 1.
+
+The core types must come *before* the submodule includes: `Redundancy` and
+`SovereignTUI` name them in method signatures, and Julia resolves those names
+while the submodule is being loaded. With the definitions further down the file
+the package failed to precompile (`UndefVarError: 'AppMetadata' not defined`),
+which is a hard error for a direct dependency on Julia 1.11 — the two red CI
+checks that prompted the reordering.
 
 The policy enforcement path (when fully implemented) will:
 . Run `audit_system(policy)` to collect `PolicyViolation` objects.
@@ -118,30 +136,33 @@ The policy enforcement path (when fully implemented) will:
 | Path | What's There
 
 | `src/SoftwareSovereign.jl`
-| Top-level module (~75 lines): submodule includes, `SoftwarePolicy` and
-  `PolicyViolation` struct definitions, stub `audit_system` and `enforce_policy`.
+| Top-level module (~175 lines): core types (`AppMetadata`, `SoftwarePolicy`,
+  `PolicyViolation`) and their exports, the demo catalogue and entry points
+  (`DEMO_CATALOG`, `scan_catalog`, stub `audit_system` and `enforce_policy`),
+  then the submodule includes and re-exports.
 
 | `src/license_db.jl`
 | `LicenseDB` submodule: `LicenseCategory` struct, `LICENSE_GROUPS` constant
   with five sovereignty-oriented categories and their SPDX identifiers.
 
 | `src/cache.jl`
-| `SovereignCache` submodule: LMDB-backed cache for installed application metadata
-  (`init_cache`, `cache_app`).
+| `SovereignCache` submodule: LMDB-backed cache (`LMDBDict`) for installed
+  application metadata (`init_cache`, `cache_app`, `get_cached_app`).
 
 | `src/redundancy.jl`
 | `Redundancy` submodule: `RedundancyReport` struct, `check_redundancy` function
-  for detecting overlapping applications by category.
+  for detecting overlapping applications by category, keyed on `AppMetadata.id`.
 
 | `src/tui.jl`
 | `SovereignTUI` submodule: terminal dashboard (`launch_dashboard`,
   `show_license_picker`) for interactive policy inspection.
 
 | `test/runtests.jl`
-| ~240 lines: `LicenseDB` standalone tests (category construction, `LICENSE_GROUPS`
-  content, no duplicate SPDX identifiers); standalone struct mirror tests for
-  `SoftwarePolicy` and `PolicyViolation`; `RedundancyReport` type tests;
-  conditional full-module integration tests (auto-skip if deps unavailable).
+| ~420 lines: `LicenseDB` standalone tests (category construction, `LICENSE_GROUPS`
+  content, no duplicate SPDX identifiers); a public-API surface check; an
+  unconditional full-module integration suite (`AppMetadata`, `check_redundancy`,
+  LMDB cache round-trip, dashboard smoke test); standalone struct mirror tests
+  for `SoftwarePolicy`, `PolicyViolation` and `RedundancyReport`.
   Chains to `e2e_test.jl` and `property_test.jl`.
 
 | `Project.toml`

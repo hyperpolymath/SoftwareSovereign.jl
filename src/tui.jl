@@ -2,7 +2,9 @@
 # (MPL-2.0 preferred; MPL-2.0 required for Julia ecosystem)
 module SovereignTUI
 
-using ..SoftwareSovereign
+# Core names come from the parent module, which defines them before this file is
+# included; explicit imports keep the dependency visible and load-order safe.
+using ..SoftwareSovereign: SoftwarePolicy, audit_system, scan_catalog
 import ..LicenseDB: LICENSE_GROUPS
 import ..Redundancy: check_redundancy
 
@@ -18,8 +20,9 @@ function launch_dashboard(p::SoftwarePolicy)
     println("║             SOFTWARE SOVEREIGN DASHBOARD                 ║")
     println("╚══════════════════════════════════════════════════════════╝")
     println(" Active Policy: $(p.name)")
+    println(" Catalog: built-in demo data (scan_catalog() is a stub)")
     println("------------------------------------------------------------")
-    
+
     # 1. Audit for Policy Violations
     violations = audit_system(p)
     if isempty(violations)
@@ -29,10 +32,11 @@ function launch_dashboard(p::SoftwarePolicy)
     end
 
     # 2. Audit for Redundancy (Bloat)
-    # Mock 'installed' list for demo
-    installed = scan_catalog()[1:3] 
+    # `scan_catalog` returns the built-in demo catalogue for now; `first` keeps
+    # the dashboard working when that catalogue is empty or shorter than 3.
+    installed = first(scan_catalog(), 3)
     redundancies = check_redundancy(installed)
-    
+
     if !isempty(redundancies)
         println("\n ⚠️ REDUNDANCY ALERT (Bloat Detected):")
         for r in redundancies
@@ -41,7 +45,7 @@ function launch_dashboard(p::SoftwarePolicy)
             println("     Suggestion: Do you really need all of these? 🤔")
         end
     end
-    
+
     println("\n [A]udit Now  [E]nforce Policy  [L]icense Picker  [Q]uit")
 end
 
@@ -55,7 +59,7 @@ function show_license_picker()
         println(" [$i] $(cat.name) - $(cat.description)")
     end
     println(" [0] Finish Selection")
-    
+
     println("\n(Pick multiple categories to automatically include all their licenses)")
 end
 
