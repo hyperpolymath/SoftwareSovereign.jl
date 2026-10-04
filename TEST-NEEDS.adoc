@@ -7,8 +7,8 @@
 [cols=",,",options="header",]
 |===
 |Category |Count |Details
-|*Source modules* |5 |243 lines
-|*Test files* |1 |309 lines, 99 @test/@testset
+|*Source modules* |5 |364 lines
+|*Test files* |3 |532 lines, 135 @test/@testset
 |*Benchmarks* |0 |None
 |===
 
@@ -19,8 +19,11 @@
 
 === FLAGGED ISSUES
 
-* *99 tests for 5 modules = 19.8 tests/module* – solid
-* *Test lines > source lines* (309 > 243)
+* *135 tests for 5 modules = 27 tests/module* – solid
+* *Test lines > source lines* (532 > 364)
+* The full module is now loaded unconditionally and covered by integration
+  tests (`AppMetadata`, `check_redundancy`, LMDB cache round-trip, dashboard
+  smoke test); a failed load fails the suite instead of skipping it
 
 === Priority: P3 (LOW)
 
